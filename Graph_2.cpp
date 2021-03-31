@@ -10,7 +10,7 @@ using namespace cv;
 using namespace std;
 using namespace std::chrono;
 
-const int weight = 15;
+const int weight = 5;
 
 int q(int i, int j, int k, int** colors)
 {
@@ -133,6 +133,77 @@ void init_tau(const int width, const int height, int** colors, int& length, int*
 			tau[length - 2][i * height + j] = i * height + j;
 		}
 	}
+}
+
+void init_cf(const int width, const int height, int alpha, int** tau, int* nt, int** colors, int* k_i, int**& c, int**& f)
+{
+	int length = width * height + 2;
+	c = new int* [length];
+	f = new int* [length];
+	bool** visited = new bool* [length];
+	for (int i = 0; i < width; ++i)
+	{
+		for (int j = 0; j < height; ++j)
+		{
+			int t = i * height + j;
+			f[t] = new int[nt[t]];
+			c[t] = new int[nt[t]];
+			visited[t] = new bool[nt[t]];
+			for (int k = 0; k < nt[t]; ++k)
+			{
+				f[t][k] = 0;
+				c[t][k] = g(alpha, k_i[tau[t][k]]);
+				visited[t][k] = false;
+			}
+			c[t][nt[t] - 1] = q(i, j, alpha, colors);
+		}
+	}
+	f[length - 2] = new int[nt[length - 2]];
+	c[length - 2] = new int[nt[length - 2]];
+	f[length - 1] = new int[1];
+	c[length - 1] = new int[1];
+
+	for (int i = 0; i < width; ++i)
+	{
+		for (int j = 0; j < height; ++j)
+		{
+			f[length - 2][i * height + j] = 0;
+			c[length - 2][i * height + j] = q(i, j, k_i[i * height + j], colors);
+		}
+	}
+
+	for (int i = 0; i < width; ++i)
+	{
+		for (int j = 0; j < height; ++j)
+		{
+			int t = i * height + j;
+			for (int k = 0; k < nt[t] - 1; ++k)
+			{
+				if (!visited[t][k])
+				{
+					int t_ = tau[i * height + j][k];
+					int t__ = find(tau[t_], nt[t_], t);
+					c[length - 2][t_] += g(k_i[t], k_i[t_]);
+					c[t_][t__] = 0;
+					c[t][k] += g(k_i[t], alpha) - g(k_i[t], k_i[t_]) - g(alpha, alpha);
+					c[t][nt[t] - 1] += g(alpha, alpha) - g(k_i[t], alpha);
+					c[t_][nt[t_] - 1] += g(k_i[t], alpha);
+					visited[t][k] = true;
+					visited[t_][t__] = true;
+				}
+			}
+		}
+	}
+
+	for (int i = 0; i < width; ++i)
+	{
+		for (int j = 0; j < height; ++j)
+		{
+			int t = i * height + j;
+			delete[] visited[t];
+		}
+	}
+	delete[] visited;
 }
 
 int* bfs(const int start, const int finish, const int length, int** tau, int* nt, int** c, int** f, int& path_length)
@@ -298,7 +369,43 @@ int main()
 	int** f;
 	int* k_i = init_k(width, height, colors);
 	init_tau(width, height, colors, length, tau, nt);
-/*
+
+	int loops = 5;
+	for (int i = 0; i < loops; ++i)
+	{
+		int alphas[3];
+		alphas[0] = rand() % 3;
+		alphas[1] = rand() % 3;
+		alphas[1] = (alphas[1] + int(alphas[1] == alphas[0])) % 3;
+		alphas[2] = 3 - alphas[1] - alphas[0];
+
+		for (int k = 0; k < 3; ++k)
+		{
+			init_cf(width, height, alphas[k], tau, nt, colors, k_i, c, f);
+			int counter = 0;
+
+			while (update_flow(length - 2, length - 1, length, tau, nt, c, f) && (counter < 10000000)) { ++counter; }
+			int* res = mincut(length - 2, length - 1, length, tau, nt, c, f);
+
+			for (int j = 0; j < length - 2; ++j)
+			{
+				if (res[j] == 1)
+				{
+					k_i[j] = alphas[k];
+				}
+			}
+
+			delete[] res;
+			for (int j = 0; j < length; ++j)
+			{
+				delete[] c[j];
+				delete[] f[j];
+			}
+			delete[] c;
+			delete[] f;
+		}
+	}
+
 	cout << "Res" << endl;
 	Mat* result = new Mat[3];
 	for (int c = 0; c < 3; ++c)
@@ -327,7 +434,6 @@ int main()
 	namedWindow("Result image", WINDOW_AUTOSIZE);
 	imshow("Result image", rez);
 	imwrite("res.png", rez);
-*/
 
 	waitKey(0);
 	return 0;
